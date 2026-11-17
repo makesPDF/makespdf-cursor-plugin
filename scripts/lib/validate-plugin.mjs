@@ -23,24 +23,6 @@ const SEMVER_PATTERN =
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const URL_PATTERN = /^https?:\/\/\S+$/;
 
-const SCANNED_EXTENSIONS = new Set([
-  ".json",
-  ".md",
-  ".mdc",
-  ".markdown",
-  ".txt",
-  ".mjs",
-  ".js",
-  ".ts",
-  ".tsx",
-  ".yml",
-  ".yaml",
-  ".sh",
-  ".svg",
-  ".html",
-  ".toml",
-]);
-
 const SKIPPED_SEGMENTS = new Set([".git", ".tmp", "node_modules"]);
 
 // Only shapes distinctive enough to be a real credential. The README's
@@ -323,8 +305,10 @@ export async function validatePlugin(root) {
   }
 
   if (typeof manifest.logo === "string") {
-    if (!isSafeRelativePath(manifest.logo)) {
-      errors.push('Plugin manifest "logo" must be a relative path.');
+    if (URL_PATTERN.test(manifest.logo) || !isSafeRelativePath(manifest.logo)) {
+      errors.push(
+        'Plugin manifest "logo" must be committed to the repository and referenced by a relative path.',
+      );
     } else if (!(await pathExists(path.join(root, manifest.logo)))) {
       errors.push(`Plugin logo is missing: ${manifest.logo}`);
     } else {
@@ -509,16 +493,21 @@ export async function validatePlugin(root) {
   }
 
   // --- Secrets --------------------------------------------------------------
+  // Read every small file that looks like text, not a fixed extension list: a
+  // committed `.env` or extensionless credential file is exactly the accident
+  // this check exists to catch. A NUL byte marks a binary file.
   const files = await walkFiles(root);
   let scanned = 0;
   for (const file of files) {
-    if (!SCANNED_EXTENSIONS.has(path.extname(file).toLowerCase())) {
+    const stat = await fs.stat(file).catch(() => null);
+    if (!stat || stat.size > 1024 * 1024) {
       continue;
     }
-    const content = await readText(file).catch(() => null);
-    if (content === null) {
+    const buffer = await fs.readFile(file).catch(() => null);
+    if (!buffer || buffer.includes(0)) {
       continue;
     }
+    const content = buffer.toString("utf8");
     scanned += 1;
     for (const { label, pattern } of SECRET_PATTERNS) {
       if (pattern.test(content)) {
@@ -528,7 +517,7 @@ export async function validatePlugin(root) {
       }
     }
   }
-  pass(`scanned ${scanned} text files for committed secrets`);
+  pass(`scanned ${scanned} files for committed secrets`);
 
   // --- Multi-plugin marker --------------------------------------------------
   if (await pathExists(path.join(root, ".cursor-plugin", "marketplace.json"))) {

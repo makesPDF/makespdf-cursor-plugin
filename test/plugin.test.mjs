@@ -109,6 +109,16 @@ test("rejects a committed looks-like-real API key", async () => {
   }, /makesPDF API key/);
 });
 
+test("scans extensionless files for secrets", async () => {
+  await assertFailsWith(async (root) => {
+    const fakeKey = `mpdf_${"b".repeat(32)}`;
+    await fs.writeFile(
+      path.join(root, ".env"),
+      `MAKESPDF_API_KEY=${fakeKey}\n`,
+    );
+  }, /\.env looks like it contains a makesPDF API key/);
+});
+
 test("rejects a skill whose frontmatter name does not match its folder", async () => {
   await assertFailsWith(async (root) => {
     const file = path.join(root, "skills", "makespdf", "SKILL.md");

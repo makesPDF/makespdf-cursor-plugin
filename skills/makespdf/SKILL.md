@@ -32,11 +32,11 @@ Never guess a tool shape: validate first, preview second, render last.
 
 ## Pick the right path
 
-| You have…                   | Do this                                                                                                         |
-| --------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| Markdown                    | `validate_markdown` (free) → `render_markdown` (billed)                                                          |
+| You have…                    | Do this                                                                                                         |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Markdown                     | `validate_markdown` (free) → `render_markdown` (billed)                                                          |
 | A new or edited DSL template | `validate_dsl` (free) → `render_dsl_preview` (free, watermarked) → `save_template` → `render_template` (billed) |
-| An existing template        | `list_templates` / `get_template` to find it → `render_template` (billed)                                        |
+| An existing template         | `list_templates` / `get_template` to find it → `render_template` (billed)                                        |
 
 Rules:
 
@@ -46,7 +46,7 @@ Rules:
   DSL if you have edited it.
 - `render_dsl_preview` is free but always stamped `PREVIEW — NOT FOR USE`. Use
   it to confirm layout before spending credits.
-- Read a template with `get_template` before rendering it as a template, so you
+- Read a template with `get_template` before calling `render_template`, so you
   know which `data` keys it binds. Library templates can be rendered directly.
 - `render_markdown` and `render_template` are **billed**: 1 credit per 10
   pages. Confirm the cost with the user before the first billed render.

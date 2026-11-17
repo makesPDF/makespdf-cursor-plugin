@@ -64,5 +64,6 @@ OAuth handshake or a real render; only a local run does.
 
 No credential is committed. `mcp.json` uses Cursor's public OAuth client ID and
 no headers. The README's API-key configuration contains only the
-`mpdf_your_api_key` placeholder. The validator scans the tracked text files for
-credential-shaped strings, and the test suite proves the scanner fires on one.
+`mpdf_your_api_key` placeholder. The validator scans every small file in the
+repository for credential-shaped strings, and the test suite proves the
+scanner fires on one.

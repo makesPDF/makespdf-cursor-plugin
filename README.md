@@ -12,12 +12,12 @@ headless browser to launch.
 
 ## What's in the plugin
 
-| Component     | Path                              | What it does                                                          |
-| ------------- | --------------------------------- | --------------------------------------------------------------------- |
-| MCP server    | `mcp.json`                        | Connects Cursor to `https://makespdf.com/api/v1/mcp` over OAuth.      |
-| Skill         | `skills/makespdf/SKILL.md`        | Teaches the validate → preview → render workflow and how to save PDFs. |
-| Command       | `commands/render-markdown-to-pdf.md` | Renders the current markdown file and saves the PDF to the workspace. |
-| Plugin manifest | `.cursor-plugin/plugin.json`    | Marketplace metadata.                                                 |
+| Component       | Path                                 | What it does                                                          |
+| --------------- | ------------------------------------ | --------------------------------------------------------------------- |
+| MCP server      | `mcp.json`                           | Connects Cursor to `https://makespdf.com/api/v1/mcp` over OAuth.      |
+| Skill           | `skills/makespdf/SKILL.md`           | Teaches validate → preview → render, and how to save the PDF.         |
+| Command         | `commands/render-markdown-to-pdf.md` | Renders the current markdown file and saves the PDF to the workspace. |
+| Plugin manifest | `.cursor-plugin/plugin.json`         | Marketplace metadata.                                                 |
 
 ## Install
 
