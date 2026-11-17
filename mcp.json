@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "makespdf": {
+      "url": "https://makespdf.com/api/v1/mcp",
+      "auth": {
+        "CLIENT_ID": "https://cursor.com/oauth/mcp-client.json"
+      }
+    }
+  }
+}
