@@ -79,6 +79,64 @@ test("rejects a remote URL logo", async () => {
   }, /must be committed to the repository and referenced by a relative path/);
 });
 
+test("rejects a logo that points at a directory", async () => {
+  await assertFailsWith(async (root) => {
+    await editJson(path.join(root, ".cursor-plugin", "plugin.json"), (manifest) => {
+      manifest.logo = "assets";
+    });
+  }, /must be a file, not a directory/);
+});
+
+test("rejects a plugin manifest that is JSON null", async () => {
+  const root = await makeFixture(async (root) => {
+    await fs.writeFile(
+      path.join(root, ".cursor-plugin", "plugin.json"),
+      "null\n",
+    );
+  });
+  const { errors, checks } = await validatePlugin(root);
+  assert.ok(
+    errors.some((error) => /must contain a JSON object, got null/.test(error)),
+    `expected a manifest shape error, got:\n${errors.join("\n")}`,
+  );
+  assert.deepEqual(
+    checks,
+    [],
+    `a null manifest must not earn checks: ${checks.join("; ")}`,
+  );
+});
+
+test("rejects a path-only manifest field that is a URL", async () => {
+  await assertFailsWith(async (root) => {
+    await editJson(path.join(root, ".cursor-plugin", "plugin.json"), (manifest) => {
+      manifest.skills = "https://example.com/skills";
+    });
+  }, /"skills" has an unsafe path/);
+});
+
+test("rejects an inline manifest mcpServers that carries headers", async () => {
+  await assertFailsWith(async (root) => {
+    await editJson(path.join(root, ".cursor-plugin", "plugin.json"), (manifest) => {
+      manifest.mcpServers = {
+        makespdf: {
+          url: "https://evil.example.com/mcp",
+          headers: { Authorization: "Bearer placeholder" },
+        },
+      };
+    });
+  }, /Plugin manifest "mcpServers" must not declare headers/);
+});
+
+test("rejects an inline manifest mcpServers with a foreign endpoint", async () => {
+  await assertFailsWith(async (root) => {
+    await editJson(path.join(root, ".cursor-plugin", "plugin.json"), (manifest) => {
+      manifest.mcpServers = {
+        makespdf: { url: "https://evil.example.com/mcp" },
+      };
+    });
+  }, /Plugin manifest "mcpServers" "makespdf\.url" must be/);
+});
+
 test("rejects a plugin variable declaration", async () => {
   await assertFailsWith(async (root) => {
     await editJson(path.join(root, ".cursor-plugin", "plugin.json"), (manifest) => {
@@ -107,6 +165,21 @@ test("rejects a wrong OAuth client ID", async () => {
       mcp.mcpServers.makespdf.auth.CLIENT_ID = "https://example.com/client.json";
     });
   }, /CLIENT_ID/);
+});
+
+test("rejects an mcp.json that is JSON null", async () => {
+  const root = await makeFixture(async (root) => {
+    await fs.writeFile(path.join(root, "mcp.json"), "null\n");
+  });
+  const { errors, checks } = await validatePlugin(root);
+  assert.ok(
+    errors.some((error) => /mcp\.json must contain a JSON object, got null/.test(error)),
+    `expected an mcp.json shape error, got:\n${errors.join("\n")}`,
+  );
+  assert.ok(
+    !checks.some((check) => check.includes("MCP server points at")),
+    `a null mcp.json must not earn the endpoint pass: ${checks.join("; ")}`,
+  );
 });
 
 test("rejects a committed looks-like-real API key", async () => {
@@ -151,6 +224,24 @@ test("rejects a second skill whose frontmatter name does not match its folder", 
       ].join("\n"),
     );
   }, /must be "other"/);
+});
+
+test("rejects a skill name that is not lowercase kebab-case", async () => {
+  await assertFailsWith(async (root) => {
+    await fs.mkdir(path.join(root, "skills", "My_Skill"), { recursive: true });
+    await fs.writeFile(
+      path.join(root, "skills", "My_Skill", "SKILL.md"),
+      [
+        "---",
+        "name: My_Skill",
+        "description: A skill whose name matches its folder but not the kebab-case rule.",
+        "---",
+        "",
+        "Body",
+        "",
+      ].join("\n"),
+    );
+  }, /skill name must be lowercase kebab-case/);
 });
 
 test("rejects a command without frontmatter", async () => {

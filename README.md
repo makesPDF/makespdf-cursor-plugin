@@ -72,7 +72,7 @@ workflow is always the same:
   `render_dsl_preview` (free, watermarked), then `save_template`, then
   `render_template`.
 - **An existing template** — `list_templates` / `get_template`, then
-  `render_template`.
+  `validate_dsl` (free) on the DSL it returns, then `render_template`.
 
 Billed renders return a short-lived `downloadUrl`; the agent downloads the PDF
 from it into your workspace. Links last 15 minutes, and

@@ -42,7 +42,8 @@ const SECRET_PATTERNS = [
 
 /**
  * True for a relative path that stays inside the plugin directory. A URL is
- * not a path: callers that also accept remote values check URL_PATTERN first.
+ * not a path, so a remote value is refused: this plugin references every
+ * manifest path locally, including its logo.
  */
 export function isSafeRelativePath(value) {
   if (typeof value !== "string" || value.length === 0) {
@@ -132,6 +133,37 @@ async function readJson(filePath, errors, label) {
   }
 }
 
+function jsonTypeName(value) {
+  if (value === null) {
+    return "null";
+  }
+  if (Array.isArray(value)) {
+    return "an array";
+  }
+  return typeof value;
+}
+
+/**
+ * Reads a JSON file that must hold an object. `readJson` returns the parsed
+ * value, so a file containing `null` is not an error there; this wrapper makes
+ * the shape part of the gate instead of letting a falsy value read as absent.
+ */
+async function readJsonObject(filePath, errors, label) {
+  const before = errors.length;
+  const value = await readJson(filePath, errors, label);
+  if (errors.length > before) {
+    // Missing or unparsable; readJson already recorded why.
+    return null;
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    errors.push(
+      `${label} must contain a JSON object, got ${jsonTypeName(value)}.`,
+    );
+    return null;
+  }
+  return value;
+}
+
 async function walkFiles(root) {
   const files = [];
   const stack = [root];
@@ -184,6 +216,73 @@ function checkToolingReference(content, token, label, errors) {
   }
 }
 
+/**
+ * The one set of rules for a makesPDF MCP server entry, shared by mcp.json and
+ * by an inline manifest `mcpServers` object (which overrides mcp.json in
+ * Cursor, so leaving it unchecked would let a bad server ship).
+ */
+function validateMcpServers(servers, source, errors, warnings, pass) {
+  if (!servers || typeof servers !== "object" || Array.isArray(servers)) {
+    errors.push(`${source} must contain a "mcpServers" object.`);
+    return;
+  }
+
+  const names = Object.keys(servers);
+  if (!names.includes(PLUGIN_NAME)) {
+    errors.push(`${source} has no "${PLUGIN_NAME}" server entry.`);
+  }
+  if (names.length !== 1) {
+    warnings.push(
+      `${source} declares ${names.length} servers; this plugin is expected to declare only "${PLUGIN_NAME}".`,
+    );
+  }
+
+  const server = servers[PLUGIN_NAME];
+  if (!server || typeof server !== "object" || Array.isArray(server)) {
+    errors.push(`${source} "${PLUGIN_NAME}" entry must be an object.`);
+    return;
+  }
+
+  if (server.url !== MCP_URL) {
+    errors.push(
+      `${source} "${PLUGIN_NAME}.url" must be ${MCP_URL}, got ${JSON.stringify(server.url)}.`,
+    );
+  } else {
+    pass(`${source} points at ${MCP_URL}`);
+  }
+
+  const clientId = server.auth && server.auth.CLIENT_ID;
+  if (clientId !== CURSOR_CLIENT_ID) {
+    errors.push(
+      `${source} "${PLUGIN_NAME}.auth.CLIENT_ID" must be ${CURSOR_CLIENT_ID}.`,
+    );
+  } else {
+    pass(`${source} uses Cursor's client ID metadata document`);
+  }
+
+  if (server.auth && server.auth.CLIENT_SECRET !== undefined) {
+    errors.push(
+      `${source} must not carry a CLIENT_SECRET; the plugin uses a public OAuth client.`,
+    );
+  }
+
+  if (server.headers !== undefined) {
+    errors.push(
+      `${source} must not declare headers; OAuth is the auth route and headers would mean a shared API key.`,
+    );
+  } else {
+    pass(`${source} declares no headers`);
+  }
+
+  for (const field of ["command", "args", "env"]) {
+    if (server[field] !== undefined) {
+      errors.push(
+        `${source} "${PLUGIN_NAME}" must be a remote server; "${field}" belongs to a stdio server.`,
+      );
+    }
+  }
+}
+
 export async function validatePlugin(root) {
   const errors = [];
   const warnings = [];
@@ -195,7 +294,7 @@ export async function validatePlugin(root) {
 
   // --- Manifest -------------------------------------------------------------
   const manifestPath = path.join(root, ".cursor-plugin", "plugin.json");
-  const manifest = await readJson(manifestPath, errors, "Plugin manifest");
+  const manifest = await readJsonObject(manifestPath, errors, "Plugin manifest");
   if (!manifest) {
     return { errors, warnings, checks };
   }
@@ -286,17 +385,14 @@ export async function validatePlugin(root) {
     pass("manifest declares no plugin variables");
   }
 
-  // "logo" is deliberately absent here: it is the one path that must be a
-  // committed file rather than a URL, so the dedicated block below owns it and
-  // each bad value yields one error.
+  // "logo" is deliberately absent here: it is the one field with a rule of its
+  // own (a committed file, never a URL), so the dedicated block below owns it
+  // and each bad value yields one error.
   for (const field of ["rules", "skills", "agents", "commands", "hooks", "mcpServers"]) {
     for (const value of collectPathValues(manifest[field])) {
-      if (URL_PATTERN.test(value)) {
-        continue;
-      }
       if (!isSafeRelativePath(value)) {
         errors.push(
-          `Plugin manifest "${field}" has an unsafe path "${value}"; use a relative path with no ".." or absolute prefix.`,
+          `Plugin manifest "${field}" has an unsafe path "${value}"; use a relative path with no "..", absolute prefix or URL.`,
         );
         continue;
       }
@@ -306,15 +402,48 @@ export async function validatePlugin(root) {
     }
   }
 
+  // An inline `mcpServers` object overrides mcp.json discovery in Cursor, so the
+  // server users actually connect to would otherwise never be checked.
+  if (
+    manifest.mcpServers &&
+    typeof manifest.mcpServers === "object" &&
+    !Array.isArray(manifest.mcpServers)
+  ) {
+    warnings.push(
+      'Plugin manifest declares inline "mcpServers"; it overrides mcp.json, so the file is not what users connect to.',
+    );
+    validateMcpServers(
+      manifest.mcpServers,
+      'Plugin manifest "mcpServers"',
+      errors,
+      warnings,
+      pass,
+    );
+    if (/\$\{[^}]+\}/.test(JSON.stringify(manifest.mcpServers))) {
+      errors.push(
+        'Plugin manifest "mcpServers" contains a ${VAR} placeholder; this plugin declares no variables.',
+      );
+    }
+  }
+
   if (typeof manifest.logo === "string") {
     if (!isSafeRelativePath(manifest.logo)) {
       errors.push(
         'Plugin manifest "logo" must be committed to the repository and referenced by a relative path.',
       );
-    } else if (!(await pathExists(path.join(root, manifest.logo)))) {
-      errors.push(`Plugin logo is missing: ${manifest.logo}`);
     } else {
-      pass(`logo exists at ${manifest.logo}`);
+      const logoStat = await fs
+        .stat(path.join(root, manifest.logo))
+        .catch(() => null);
+      if (!logoStat) {
+        errors.push(`Plugin logo is missing: ${manifest.logo}`);
+      } else if (!logoStat.isFile()) {
+        errors.push(
+          `Plugin logo must be a file, not a directory: ${manifest.logo}`,
+        );
+      } else {
+        pass(`logo exists at ${manifest.logo}`);
+      }
     }
   } else {
     warnings.push('Plugin manifest has no "logo"; the marketplace entry will be plain.');
@@ -322,71 +451,14 @@ export async function validatePlugin(root) {
 
   // --- MCP server -----------------------------------------------------------
   const mcpPath = path.join(root, "mcp.json");
-  const mcp = await readJson(mcpPath, errors, "mcp.json");
+  const mcp = await readJsonObject(mcpPath, errors, "mcp.json");
   if (mcp) {
-    const servers = mcp.mcpServers;
-    if (!servers || typeof servers !== "object" || Array.isArray(servers)) {
-      errors.push('mcp.json must contain a "mcpServers" object.');
-    } else {
-      const names = Object.keys(servers);
-      if (!names.includes(PLUGIN_NAME)) {
-        errors.push(`mcp.json has no "${PLUGIN_NAME}" server entry.`);
-      }
-      if (names.length !== 1) {
-        warnings.push(
-          `mcp.json declares ${names.length} servers; this plugin is expected to declare only "${PLUGIN_NAME}".`,
-        );
-      }
+    validateMcpServers(mcp.mcpServers, "mcp.json", errors, warnings, pass);
 
-      const server = servers[PLUGIN_NAME];
-      if (!server || typeof server !== "object") {
-        errors.push(`mcp.json "${PLUGIN_NAME}" entry must be an object.`);
-      } else {
-        if (server.url !== MCP_URL) {
-          errors.push(
-            `mcp.json "${PLUGIN_NAME}.url" must be ${MCP_URL}, got ${JSON.stringify(server.url)}.`,
-          );
-        } else {
-          pass(`MCP server points at ${MCP_URL}`);
-        }
-
-        const clientId = server.auth && server.auth.CLIENT_ID;
-        if (clientId !== CURSOR_CLIENT_ID) {
-          errors.push(
-            `mcp.json "${PLUGIN_NAME}.auth.CLIENT_ID" must be ${CURSOR_CLIENT_ID}.`,
-          );
-        } else {
-          pass("MCP auth uses Cursor's client ID metadata document");
-        }
-
-        if (server.auth && server.auth.CLIENT_SECRET !== undefined) {
-          errors.push(
-            'mcp.json must not carry a CLIENT_SECRET; the plugin uses a public OAuth client.',
-          );
-        }
-
-        if (server.headers !== undefined) {
-          errors.push(
-            'mcp.json must not declare headers; OAuth is the auth route and headers would mean a shared API key.',
-          );
-        } else {
-          pass("MCP server declares no headers");
-        }
-
-        for (const field of ["command", "args", "env"]) {
-          if (server[field] !== undefined) {
-            errors.push(
-              `mcp.json "${PLUGIN_NAME}" must be a remote server; "${field}" belongs to a stdio server.`,
-            );
-          }
-        }
-      }
-
-      if (/\$\{[^}]+\}/.test(JSON.stringify(mcp))) {
-        errors.push(
-          "mcp.json contains a ${VAR} placeholder; this plugin declares no variables.",
-        );
-      }
+    if (/\$\{[^}]+\}/.test(JSON.stringify(mcp))) {
+      errors.push(
+        "mcp.json contains a ${VAR} placeholder; this plugin declares no variables.",
+      );
     }
   }
 
@@ -415,6 +487,10 @@ export async function validatePlugin(root) {
       if (frontmatter.name !== folder) {
         errors.push(
           `Skill frontmatter "name" must be "${folder}" and match its folder.`,
+        );
+      } else if (!NAME_PATTERN.test(frontmatter.name)) {
+        errors.push(
+          `${relative} skill name must be lowercase kebab-case, matching its folder.`,
         );
       } else {
         pass(`${relative} skill name matches its folder`);
