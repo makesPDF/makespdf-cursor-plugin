@@ -48,8 +48,8 @@ it in the browser. The consent page names cursor.com and the localhost return
 address Cursor uses. There is no API key to paste and no plugin variable for a
 team admin to set.
 
-If you don't have an account yet, signing in creates one; makesPDF includes
-free credits to try the render path.
+If you don't have a makesPDF account yet, create one at
+<https://makespdf.com> first, then re-run the tool call and approve the prompt.
 
 ## Use
 
