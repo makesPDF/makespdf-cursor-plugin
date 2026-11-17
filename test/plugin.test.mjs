@@ -71,6 +71,14 @@ test("rejects an absolute logo path", async () => {
   }, /unsafe path|relative path/);
 });
 
+test("rejects a remote URL logo", async () => {
+  await assertFailsWith(async (root) => {
+    await editJson(path.join(root, ".cursor-plugin", "plugin.json"), (manifest) => {
+      manifest.logo = "https://example.com/logo.svg";
+    });
+  }, /must be committed to the repository and referenced by a relative path/);
+});
+
 test("rejects a plugin variable declaration", async () => {
   await assertFailsWith(async (root) => {
     await editJson(path.join(root, ".cursor-plugin", "plugin.json"), (manifest) => {
@@ -127,6 +135,24 @@ test("rejects a skill whose frontmatter name does not match its folder", async (
   }, /must be "makespdf"/);
 });
 
+test("rejects a second skill whose frontmatter name does not match its folder", async () => {
+  await assertFailsWith(async (root) => {
+    await fs.mkdir(path.join(root, "skills", "other"), { recursive: true });
+    await fs.writeFile(
+      path.join(root, "skills", "other", "SKILL.md"),
+      [
+        "---",
+        "name: mismatched",
+        "description: Another skill whose name does not match its folder.",
+        "---",
+        "",
+        "Body",
+        "",
+      ].join("\n"),
+    );
+  }, /must be "other"/);
+});
+
 test("rejects a command without frontmatter", async () => {
   await assertFailsWith(async (root) => {
     await fs.writeFile(
@@ -134,6 +160,41 @@ test("rejects a command without frontmatter", async () => {
       "# No frontmatter here\n",
     );
   }, /has no YAML frontmatter/);
+});
+
+test("a command without frontmatter does not pass the aggregate check", async () => {
+  const root = await makeFixture(async (root) => {
+    await fs.writeFile(
+      path.join(root, "commands", "broken.md"),
+      "# No frontmatter here\n",
+    );
+  });
+  const { errors, checks } = await validatePlugin(root);
+  assert.ok(
+    errors.some((error) => /has no YAML frontmatter/.test(error)),
+    `expected a frontmatter error, got:\n${errors.join("\n")}`,
+  );
+  assert.ok(
+    !checks.some((check) => check.includes("valid frontmatter")),
+    `a failing command must not produce the pass line: ${checks.join("; ")}`,
+  );
+});
+
+test("rejects a command named after its containing folder", async () => {
+  await assertFailsWith(async (root) => {
+    await fs.writeFile(
+      path.join(root, "commands", "render.md"),
+      [
+        "---",
+        "name: commands",
+        "description: A command whose name matches its folder, not its file.",
+        "---",
+        "",
+        "Body",
+        "",
+      ].join("\n"),
+    );
+  }, /frontmatter name "commands" does not match the file name/);
 });
 
 test("parseFrontmatter reads quoted and folded fields", () => {
@@ -152,6 +213,14 @@ test("parseFrontmatter reads quoted and folded fields", () => {
   assert.equal(fields.description, "One line continued here.");
 });
 
+test("parseFrontmatter accepts a closing delimiter at end of file", () => {
+  const fields = parseFrontmatter(
+    ["---", "name: makespdf", "description: No trailing newline", "---"].join("\n"),
+  );
+  assert.equal(fields.name, "makespdf");
+  assert.equal(fields.description, "No trailing newline");
+});
+
 test("parseFrontmatter refuses a document without frontmatter", () => {
   assert.equal(parseFrontmatter("# Just a heading\n"), null);
 });
@@ -159,7 +228,7 @@ test("parseFrontmatter refuses a document without frontmatter", () => {
 test("isSafeRelativePath keeps paths inside the plugin", () => {
   assert.equal(isSafeRelativePath("assets/logo.svg"), true);
   assert.equal(isSafeRelativePath("./skills/makespdf/SKILL.md"), true);
-  assert.equal(isSafeRelativePath("https://makespdf.com/logo.svg"), true);
+  assert.equal(isSafeRelativePath("https://makespdf.com/logo.svg"), false);
   assert.equal(isSafeRelativePath("../outside.svg"), false);
   assert.equal(isSafeRelativePath("/etc/passwd"), false);
   assert.equal(isSafeRelativePath("C:\\Windows\\logo.svg"), false);

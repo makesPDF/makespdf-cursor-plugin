@@ -36,14 +36,15 @@ Never guess a tool shape: validate first, preview second, render last.
 | ---------------------------- | --------------------------------------------------------------------------------------------------------------- |
 | Markdown                     | `validate_markdown` (free) → `render_markdown` (billed)                                                          |
 | A new or edited DSL template | `validate_dsl` (free) → `render_dsl_preview` (free, watermarked) → `save_template` → `render_template` (billed) |
-| An existing template         | `list_templates` / `get_template` to find it → `render_template` (billed)                                        |
+| An existing template         | `list_templates` / `get_template` to find it → `validate_dsl` (free) → `render_template` (billed)                |
 
 Rules:
 
 - `validate_dsl` and `validate_markdown` are free. Before every billed render,
-  run the free validator that matches the input and fix what it reports. A
-  saved template was validated when it was saved; re-run `validate_dsl` on its
-  DSL if you have edited it.
+  run the free validator that matches the input and fix what it reports: the
+  markdown itself, or the DSL text — for an existing template, pass the DSL
+  returned by `get_template` to `validate_dsl`. A template saved through
+  `save_template` was validated then, but validate it again after any edit.
 - `render_dsl_preview` is free but always stamped `PREVIEW — NOT FOR USE`. Use
   it to confirm layout before spending credits.
 - Read a template with `get_template` before calling `render_template`, so you

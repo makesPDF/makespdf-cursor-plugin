@@ -40,13 +40,16 @@ const SECRET_PATTERNS = [
   },
 ];
 
-/** True for a relative path that stays inside the plugin directory. */
+/**
+ * True for a relative path that stays inside the plugin directory. A URL is
+ * not a path: callers that also accept remote values check URL_PATTERN first.
+ */
 export function isSafeRelativePath(value) {
   if (typeof value !== "string" || value.length === 0) {
     return false;
   }
   if (URL_PATTERN.test(value)) {
-    return true;
+    return false;
   }
   if (path.isAbsolute(value) || /^[A-Za-z]:[\\/]/.test(value)) {
     return false;
@@ -64,7 +67,11 @@ export function parseFrontmatter(content) {
   if (!normalized.startsWith("---\n")) {
     return null;
   }
-  const closing = normalized.indexOf("\n---\n", 4);
+  // A component file may end on its closing delimiter with no trailing
+  // newline, so scan a copy with one appended; indices stay valid for the
+  // original because only the end gains a character.
+  const scanned = normalized.endsWith("\n") ? normalized : `${normalized}\n`;
+  const closing = scanned.indexOf("\n---\n", 4);
   if (closing === -1) {
     return null;
   }
@@ -279,23 +286,18 @@ export async function validatePlugin(root) {
     pass("manifest declares no plugin variables");
   }
 
-  for (const field of [
-    "logo",
-    "rules",
-    "skills",
-    "agents",
-    "commands",
-    "hooks",
-    "mcpServers",
-  ]) {
+  // "logo" is deliberately absent here: it is the one path that must be a
+  // committed file rather than a URL, so the dedicated block below owns it and
+  // each bad value yields one error.
+  for (const field of ["rules", "skills", "agents", "commands", "hooks", "mcpServers"]) {
     for (const value of collectPathValues(manifest[field])) {
+      if (URL_PATTERN.test(value)) {
+        continue;
+      }
       if (!isSafeRelativePath(value)) {
         errors.push(
           `Plugin manifest "${field}" has an unsafe path "${value}"; use a relative path with no ".." or absolute prefix.`,
         );
-        continue;
-      }
-      if (URL_PATTERN.test(value)) {
         continue;
       }
       if (!(await pathExists(path.join(root, value)))) {
@@ -305,7 +307,7 @@ export async function validatePlugin(root) {
   }
 
   if (typeof manifest.logo === "string") {
-    if (URL_PATTERN.test(manifest.logo) || !isSafeRelativePath(manifest.logo)) {
+    if (!isSafeRelativePath(manifest.logo)) {
       errors.push(
         'Plugin manifest "logo" must be committed to the repository and referenced by a relative path.',
       );
@@ -389,29 +391,44 @@ export async function validatePlugin(root) {
   }
 
   // --- Skills ---------------------------------------------------------------
-  const skillFile = path.join(root, "skills", PLUGIN_NAME, "SKILL.md");
-  if (!(await pathExists(skillFile))) {
+  // Every skills/<folder>/SKILL.md is checked, so adding a second skill cannot
+  // slip past the frontmatter gate.
+  const skillsDir = path.join(root, "skills");
+  const mainSkillFile = path.join(skillsDir, PLUGIN_NAME, "SKILL.md");
+  const skillFiles = (await walkFiles(skillsDir)).filter(
+    (file) => path.basename(file) === "SKILL.md",
+  );
+  if (skillFiles.length === 0) {
     errors.push(`Skill is missing: skills/${PLUGIN_NAME}/SKILL.md`);
   } else {
-    const frontmatter = parseFrontmatter(await readText(skillFile));
-    if (!frontmatter) {
-      errors.push(`skills/${PLUGIN_NAME}/SKILL.md has no YAML frontmatter.`);
-    } else {
-      if (frontmatter.name !== PLUGIN_NAME) {
+    if (!(await pathExists(mainSkillFile))) {
+      errors.push(`Skill is missing: skills/${PLUGIN_NAME}/SKILL.md`);
+    }
+    for (const file of skillFiles) {
+      const relative = path.relative(root, file);
+      const folder = path.basename(path.dirname(file));
+      const frontmatter = parseFrontmatter(await readText(file));
+      if (!frontmatter) {
+        errors.push(`${relative} has no YAML frontmatter.`);
+        continue;
+      }
+      if (frontmatter.name !== folder) {
         errors.push(
-          `Skill frontmatter "name" must be "${PLUGIN_NAME}" and match its folder.`,
+          `Skill frontmatter "name" must be "${folder}" and match its folder.`,
         );
       } else {
-        pass("skill frontmatter name matches its folder");
+        pass(`${relative} skill name matches its folder`);
       }
       if (!frontmatter.description || frontmatter.description.length < 20) {
-        errors.push('Skill frontmatter needs a descriptive "description".');
+        errors.push(`${relative} needs a descriptive "description" in its frontmatter.`);
       } else {
-        pass("skill frontmatter description is present");
+        pass(`${relative} skill description is present`);
       }
     }
+  }
 
-    const skill = await readText(skillFile);
+  if (await pathExists(mainSkillFile)) {
+    const skill = await readText(mainSkillFile);
     checkToolingReference(skill, AUTHORING_SKILL_URL, "Skill", errors);
     for (const token of [
       "validate_markdown",
@@ -441,21 +458,21 @@ export async function validatePlugin(root) {
       const frontmatter = parseFrontmatter(await readText(file));
       if (!frontmatter) {
         errors.push(`${relative} has no YAML frontmatter.`);
-        continue;
-      }
-      for (const key of ["name", "description"]) {
-        if (!frontmatter[key]) {
-          errors.push(`${relative} is missing "${key}" in its frontmatter.`);
+      } else {
+        for (const key of ["name", "description"]) {
+          if (!frontmatter[key]) {
+            errors.push(`${relative} is missing "${key}" in its frontmatter.`);
+          }
         }
-      }
-      if (
-        frontmatter.name &&
-        frontmatter.name !== path.basename(path.dirname(file)) &&
-        frontmatter.name !== path.basename(file, path.extname(file))
-      ) {
-        errors.push(
-          `${relative} frontmatter name "${frontmatter.name}" does not match the file name.`,
-        );
+        const expectedName = path.basename(file, path.extname(file));
+        if (frontmatter.name && frontmatter.name !== expectedName) {
+          errors.push(
+            `${relative} frontmatter name "${frontmatter.name}" does not match the file name "${expectedName}".`,
+          );
+        }
+        if (frontmatter.name && !NAME_PATTERN.test(frontmatter.name)) {
+          errors.push(`${relative} frontmatter name must be lowercase kebab-case.`);
+        }
       }
       commandErrors += errors.length - before;
     }

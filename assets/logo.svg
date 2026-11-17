@@ -1,6 +1,7 @@
 <svg width="24" height="24" viewBox="-1 -1 26 26" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <!-- Colours are the ink and accent tokens from docs/design/system.md,
-       with the dark-theme pair for dark browser chrome. -->
+  <!-- Ink and accent brand colours from the makesPDF design system:
+       https://github.com/lecstor/makespdf/blob/main/docs/design/system.md
+       (dark-theme pair for dark browser chrome). -->
   <style>
     .ink { stroke: #0e151a; }
     .accent { stroke: #0086b0; }

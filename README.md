@@ -33,6 +33,7 @@ directory:
 
 ```sh
 mkdir -p ~/.cursor/plugins/local
+rm -rf ~/.cursor/plugins/local/makespdf
 cp -R /path/to/makespdf-cursor-plugin ~/.cursor/plugins/local/makespdf
 ```
 
