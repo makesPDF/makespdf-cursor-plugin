@@ -1,0 +1,24 @@
+{
+  "name": "makespdf",
+  "displayName": "makesPDF",
+  "version": "0.1.0",
+  "description": "Render archival, accessible PDFs from markdown or a template DSL with the makesPDF MCP server.",
+  "author": {
+    "name": "makesPDF",
+    "email": "support@makespdf.com"
+  },
+  "homepage": "https://makespdf.com/docs/mcp",
+  "repository": "https://github.com/makesPDF/makespdf-cursor-plugin",
+  "license": "MIT",
+  "keywords": [
+    "pdf",
+    "markdown",
+    "mcp",
+    "pdf-a",
+    "pdf-ua",
+    "accessibility",
+    "documents",
+    "templates"
+  ],
+  "logo": "assets/logo.svg"
+}

@@ -1,0 +1,23 @@
+{
+  "name": "makespdf-cursor-plugin",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Cursor plugin for makesPDF: MCP server, skill and commands.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/makesPDF/makespdf-cursor-plugin.git"
+  },
+  "author": {
+    "name": "makesPDF",
+    "email": "support@makespdf.com"
+  },
+  "scripts": {
+    "validate": "node scripts/validate-plugin.mjs",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
